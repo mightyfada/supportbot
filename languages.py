@@ -177,7 +177,7 @@ STRINGS = {
         "welcome": (
             "👋 ¡Hola, *{name}*!\n\n"
             "Bienvenido a *{bot_name}*.\n\n"
-            "⚠️ _Estoy aquí para ayudarte con tus preguntas sobre la Billetera.\n\n"
+            "⚠️ _Estoy aquí para ayudarte con tus preguntas sobre la Billetera._\n\n"
             "Por favor, selecciona la categoría que mejor describe tu problema:"
         ),
         "choose_sub": "Seleccionaste: *{category}*\n\nElige el problema específico que estás experimentando:",
@@ -261,7 +261,7 @@ STRINGS = {
         "welcome": (
             "👋 Bonjour, *{name}*!\n\n"
             "Bienvenue sur *{bot_name}*.\n\n"
-            "⚠️ _Je suis là pour vous aider avec vos questions sur le Portefeuille.\n\n"
+            "⚠️ _Je suis là pour vous aider avec vos questions sur le Portefeuille._\n\n"
             "Veuillez sélectionner la catégorie qui décrit le mieux votre problème:"
         ),
         "choose_sub": "Vous avez sélectionné: *{category}*\n\nChoisissez le problème spécifique:",
